@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+ <html lang="th">
+ <head>
+     <meta charset="UTF‑8">
+     <meta name="viewport" content="width=device‑width, initial‑scale=1.0">
+     <title>ระบบรับแจ้งเรื่องร้องเรียน / แจ้งเคสผู้ป่วยติดเตียง เทศบาลตำบลม่วงน้อย</title>
+     <!-- 1. Leaflet CSS -->
+     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+     <!-- 2. Leaflet JS -->
+     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+     <!-- 3. Firebase SDK -->
+     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase‑app‑compat.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase‑firestore‑compat.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase‑storage‑compat.js"></script>
+     <style>
+         #map{width:100%;height:420px !important;border‑radius:12px;margin:15px 0;}
+         * {margin:0;padding:0;box‑sizing:border‑box;font‑family:'Sarabun',sans‑serif;}
+         body {background:#f0f4f8;color:#333;}
+         .header {background:linear‑gradient(135deg,#003366,#0056b3);color:white;padding:25px 20px;text‑align:center;}
+         .container {max‑width:1200px;margin:30px auto;background:white;padding:30px;border‑radius:12px;box‑shadow:0 3px 15px rgba(0,0,0,0.08);}
+         h2 {color:#003366;text‑align:center;margin‑bottom:25px;padding‑bottom:10px;border‑bottom:2px solid #d4af37;}
+         .form‑group {margin‑bottom:18px;}
+         label {display:block;margin‑bottom:6px;font‑weight:bold;color:#003366;}
+         input,select,textarea {width:100%;padding:12px;border:1px solid #cbd5e0;border‑radius:8px;font‑size:16px;}
+         textarea {resize:vertical;min‑height:120px;}
+         button {background:linear‑gradient(135deg,#d4af37,#b8860b);color:white;border:none;padding:14px 24px;border‑radius:8px;cursor:pointer;width:100%;font‑size:18px;font‑weight:bold;margin‑top:10px;}
+         .btn‑gps {background:#2563eb;width:auto;padding:10px 16px;font‑size:16px;}
+         .pdpa‑text {font‑size:14px;color:#555;margin:8px 0;}
+     </style>
+ </head>
+ <body>
+     <div class="header">
+         <h1>🏛️ เทศบาลตำบลม่วงน้อย</h1>
+         <p>ระบบรับแจ้งเรื่องร้องเรียน / แจ้งเคสผู้ป่วยติดเตียง</p>
+     </div>
+     <div class="container">
+         <h2>🗺️ กด คลิกบนแผนที่ เพื่อปักหมุดตำแหน่ง</h2>
+         <div id="map"></div>
+         <div class="form‑group">
+             <label>ชื่อ‑นามสกุล ผู้แจ้งเรื่อง:</label>
+             <input type="text" id="reporterName" placeholder="กรุณากรอกชื่อ‑นามสกุล">
+         </div>
+         <div class="form‑group">
+             <label>เบอร์โทรศัพท์ติดต่อ:</label>
+             <input type="tel" id="reporterPhone" placeholder="กรุณากรอกเบอร์โทรศัพท์">
+         </div>
+         <div class="form‑group">
+             <label>เลือกหมู่ที่ ตำบลม่วงน้อย:</label>
+             <select id="villageSelect">
+                 <option value="">-- เลือกหมู่ที่ --</option>
+                 <option value="หมู่ 1 ตำบลม่วงน้อย">หมู่ 1</option>
+                 <option value="หมู่ 2 ตำบลม่วงน้อย">หมู่ 2</option>
+                 <option value="หมู่ 3 ตำบลม่วงน้อย">หมู่ 3</option>
+                 <option value="หมู่ 4 ตำบลม่วงน้อย">หมู่ 4</option>
+                 <option value="หมู่ 5 ตำบลม่วงน้อย">หมู่ 5</option>
+                 <option value="หมู่ 6 ตำบลม่วงน้อย">หมู่ 6</option>
+                 <option value="หมู่ 7 ตำบลม่วงน้อย">หมู่ 7</option>
+                 <option value="หมู่ 8 ตำบลม่วงน้อย">หมู่ 8</option>
+                 <option value="อื่น‑ๆ ภายในเขตเทศบาล">อื่น‑ๆ ภายในเขตเทศบาล</option>
+             </select>
+         </div>
+         <div class="form‑group">
+             <label>📍 ตำแหน่งที่ปักหมุด (ละติจูด / ลองจิจูด):</label>
+             <input type="text" id="gpsLatLng" placeholder="กดคลิกแผนที่ หรือกรอกพิกัดเอง">
+             <br>
+             <button class="btn‑gps" onclick="getGPSLocation()">📍 ดึงตำแหน่งปัจจุบัน (GPS)</button>
+         </div>
+         <div class="form‑group">
+             <label>ประเภทเรื่องร้องเรียน / เคส:</label>
+             <select id="complaintType">
+                 <option value="">-- เลือกประเภท --</option>
+                 <option value="ปัญหาสาธารณูปโภค (ไฟฟ้า / น้ำประปา)">ปัญหาสาธารณูปโภค (ไฟฟ้า / น้ำประปา)</option>
+                 <option value="ปัญหาสภาพถนน / ทางเดิน">ปัญหาสภาพถนน / ทางเดิน</option>
+                 <option value="ปัญหาขยะ / สิ่งแวดล้อม">ปัญหาขยะ / สิ่งแวดล้อม</option>
+                 <option value="ปัญหาสัตว์รบกวน">ปัญหาสัตว์รบกวน</option>
+                 <option value="ร้องเรียนการให้บริการ">ร้องเรียนการให้บริการ</option>
+                 <option value="แจ้งเคสผู้ป่วยติดเตียง">แจ้งเคสผู้ป่วยติดเตียง</option>
+                 <option value="ปัญหาอื่น ๆ">ปัญหาอื่น ๆ</option>
+             </select>
+         </div>
+         <div class="form‑group">
+             <label>รายละเอียดเพิ่มเติม (สภาพผู้ป่วย / จุดเสาไฟฟ้า):</label>
+             <textarea id="complaintDetail" placeholder="กรุณาเขียนรายละเอียดเพิ่มเติม"></textarea>
+         </div>
+         <div class="form‑group">
+             <label>📸 แนบรูปหลักฐาน (1 รูป ไม่เกิน 5 MB):</label>
+             <input type="file" id="imageFile" accept="image/*">
+         </div>
+         <div class="form‑group">
+             <label><input type="checkbox" id="pdpaCheck"> ยอมรับนโยบายคุ้มครองข้อมูลส่วนบุคคล (PDPA)</label>
+             <p class="pdpa‑text">ข้าพเจ้ายินยอมให้เทศบาลตำบลม่วงน้อย เก็บชื่อ เบอร์ พิกัด รูปภาพ เพื่อดำเนินการแก้ไขปัญหาเท่านั้น</p>
+         </div>
+         <button onclick="submitComplaint()">✅ ส่งแจ้งเรื่อง / เคส</button>
+     </div>
+ <script>
+     // ✅ แทนค่า firebaseConfig ทั้ง 6 ค่าจาก Firebase Console
+     const firebaseConfig = {
+         apiKey: "AIzaSyAPqtEf2sBkS5mvCKhfJf_eUnoAsXWSKhs",
+  authDomain: "muang-noy-complaint.firebaseapp.com",
+  projectId: "muang-noy-complaint",
+  storageBucket: "muang-noy-complaint.firebasestorage.app",
+  messagingSenderId: "1027197347817",
+  appId: "1:1027197347817:web:a888bcd324c194ab330d78",
+  measurementId: "G-V8FK4T3KCM"
+};
+     let map;
+     let marker;
+     const centerMuengNoi = {lat: 18.2100, lng: 99.0800};
+     document.addEventListener('DOMContentLoaded', function() {
+         try {
+             if (typeof L === "undefined") {
+                 alert("❌ โหลด Leaflet ไม่สำเร็จ 👉 ลองเปลี่ยนเบราว์เซอร์ หรือปิดตัวบล็อกโฆษณา");
+                 return;
+             }
+             initLeafletMap();
+         } catch (err) {
+             alert("❌ ข้อผิดพลาดตอนโหลดหน้าเว็บ: " + err.message);
+         }
+     });
+     function initLeafletMap(){
+         try {
+             map = L.map('map').setView([centerMuengNoi.lat, centerMuengNoi.lng], 14);
+             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '© OpenStreetMap'}).addTo(map);
+             map.on('click', function(e){
+                 const lat = e.latlng.lat;
+                 const lng = e.latlng.lng;
+                 if(marker) map.removeLayer(marker);
+                 marker = L.marker([lat, lng]).addTo(map).bindPopup(`พิกัด: ${lat.toFixed(6)}, ${lng.toFixed(6)}`).openPopup();
+                 document.getElementById("gpsLatLng").value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+             });
+         } catch (err) {
+             alert("❌ สร้างแผนที่ล้มเหลว: " + err.message);
+         }
+     }
+     function getGPSLocation(){
+         if(!navigator.geolocation){
+             alert("⚠️ เบราว์เซอร์ไม่รองรับ GPS ครับ สามารถคลิกแผนที่เพื่อปักจุดได้เลยครับ");
+             return;
+         }
+         navigator.geolocation.getCurrentPosition(
+             (position)=>{
+                 const lat = position.coords.latitude;
+                 const lng = position.coords.longitude;
+                 if(marker) map.removeLayer(marker);
+                 marker = L.marker([lat, lng]).addTo(map).bindPopup("ตำแหน่งปัจจุบัน").openPopup();
+                 map.setView([lat, lng], 16);
+                 document.getElementById("gpsLatLng").value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                 alert(`✅ ดึงพิกัดสำเร็จ!\nละติจูด: ${lat}\nลองจิจูด: ${lng}`);
+             },
+             (error)=>{
+                 let errorMessage = "";
+                 if(error.code === error.PERMISSION_DENIED){
+                     errorMessage = "❌ ไม่สามารถดึงตำแหน่งได้ เนื่องจากปฏิเสธสิทธิ์ตำแหน่ง ✅ สามารถคลิกแผนที่เพื่อปักจุดได้เลยครับ";
+                 }else{
+                     errorMessage = `❌ ข้อผิดพลาด GPS: ${error.message}`;
+                 }
+                 alert(errorMessage);
+             }
+         )
+     }
+     firebase.initializeApp(firebaseConfig);
+     const db = firebase.firestore();
+     const storage = firebase.storage();
+     async function submitComplaint(){
+         try {
+             const reporterName = document.getElementById("reporterName").value.trim();
+             const reporterPhone = document.getElementById("reporterPhone").value.trim();
+             const villageSelect = document.getElementById("villageSelect").value;
+             const complaintType = document.getElementById("complaintType").value;
+             const complaintDetail = document.getElementById("complaintDetail").value.trim();
+             const gpsLatLng = document.getElementById("gpsLatLng").value.trim();
+             const imageFile = document.getElementById("imageFile").files[0];
+             const pdpaCheck = document.getElementById("pdpaCheck").checked;
+             if(!reporterName || !villageSelect || !complaintType || !complaintDetail){
+                 alert("⚠️ กรุณากรอกข้อมูลให้ครบทุกช่องครับ");
+                 return;
+             }
+             if(!pdpaCheck){
+                 alert("⚠️ กรุณายอมรับนโยบายคุ้มครองข้อมูลส่วนบุคคลก่อนส่งครับ");
+                 return;
+             }
+             let imageUrl = "";
+             if(imageFile){
+                 const maxSizeMB = 5;
+                 if(imageFile.size > maxSizeMB * 1024 * 1024){
+                     alert("⚠️ ขนาดรูปต้องไม่เกิน 5 MB ครับ");
+                     return;
+                 }
+                 const storageRef = storage.ref(`complaint_images/${Date.now()}_${imageFile.name}`);
+                 const uploadTask = await storageRef.put(imageFile);
+                 imageUrl = await uploadTask.ref.getDownloadURL();
+             }
+             await db.collection("complaint_list").add({
+                 reporterName: reporterName,
+                 reporterPhone: reporterPhone,
+                 village: villageSelect,
+                 complaintType: complaintType,
+                 complaintDetail: complaintDetail,
+                 gpsLatLng: gpsLatLng,
+                 imageUrl: imageUrl,
+                 status: "รอรับเรื่อง",
+                 submitTime: firebase.firestore.FieldValue.serverTimestamp()
+             })
+             alert("✅ ส่งเรื่องร้องเรียน / เคสสำเร็จครับ");
+             document.getElementById("reporterName").value = "";
+             document.getElementById("reporterPhone").value = "";
+             document.getElementById("villageSelect").value = "";
+             document.getElementById("complaintType").value = "";
+             document.getElementById("complaintDetail").value = "";
+             document.getElementById("gpsLatLng").value = "";
+             document.getElementById("imageFile").value = "";
+             document.getElementById("pdpaCheck").checked = false;
+             if(marker) map.removeLayer(marker);
+         } catch (err) {
+             alert("❌ ข้อผิดพลาดตอนส่งข้อมูลเข้า Firebase: " + err.message);
+         }
+     }
+ </script>
+ </body>
+ </html>
