@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+ <html lang="th">
+ <head>
+     <meta charset="UTF‑8">
+     <meta name="viewport" content="width=device‑width, initial‑scale=1.0">
+     <title>หน้าเจ้าหน้าที่ – ตรวจเคส เทศบาลตำบลม่วงน้อย</title>
+     <!-- Leaflet -->
+     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+     <!-- Firebase -->
+     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase‑app‑compat.js"></script>
+     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase‑firestore‑compat.js"></script>
+     <style>
+         #mapAdmin{width:100%;height:380px !important;border‑radius:12px;margin:15px 0;}
+         * {margin:0;padding:0;box‑sizing:border‑box;font‑family:'Sarabun',sans‑serif;}
+         body {background:#f0f4f8;color:#333;}
+         .header {background:#003366;color:white;padding:20px;text‑align:center;}
+         .container {max‑width:1200px;margin:20px auto;background:white;padding:25px;border‑radius:12px;}
+         h2 {color:#003366;text‑align:center;margin‑bottom:20px;}
+         .case‑card {border:1px solid #cbd5e0;border‑radius:10px;padding:15px;margin:12px 0;}
+         .status‑waiting {background:#fff3cd;}
+         .status‑processing {background:#cfe2ff;}
+         .status‑done {background:#d1e7dd;}
+         button {padding:10px 14px;border‑radius:8px;border:none;cursor:pointer;margin:4px;}
+         .btn‑waiting {background:#ffc107;}
+         .btn‑processing {background:#0d6efd;color:white;}
+         .btn‑done {background:#198754;color:white;}
+     </style>
+ </head>
+ <body>
+     <div class="header">
+         <h1>👨‍💼 หน้าเจ้าหน้าที่ ตรวจเคส</h1>
+         <p>เทศบาลตำบลม่วงน้อย</p>
+     </div>
+     <div class="container">
+         <h2>🗺️ แผนที่แสดงตำแหน่งเคส</h2>
+         <div id="mapAdmin"></div>
+         <h2>📋 รายการเคสทั้งหมด</h2>
+         <div id="caseList"></div>
+     </div>
+ <script>
+     // ✅ แทน firebaseConfig ชุดเดียวกับ index.html เลยครับ
+     const firebaseConfig = {
+  apiKey: "AIzaSyAPqtEf2sBkS5mvCKhfJf_eUnoAsXWSKhs",
+  authDomain: "muang-noy-complaint.firebaseapp.com",
+  projectId: "muang-noy-complaint",
+  storageBucket: "muang-noy-complaint.firebasestorage.app",
+  messagingSenderId: "1027197347817",
+  appId: "1:1027197347817:web:a888bcd324c194ab330d78",
+  measurementId: "G-V8FK4T3KCM"
+};
+        
+     };
+     firebase.initializeApp(firebaseConfig);
+     const db = firebase.firestore();
+     let mapAdmin;
+     let markerList = [];
+     document.addEventListener('DOMContentLoaded', function() {
+         initAdminMap();
+         loadAllCase();
+     });
+     function initAdminMap(){
+         mapAdmin = L.map('mapAdmin').setView([18.2100,99.0800],14);
+         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(mapAdmin);
+     }
+     // โหลดเคสทั้งหมด + แสดงบนการ์ด + ปักหมุดบนแผนที่
+     function loadAllCase(){
+         db.collection("complaint_list").orderBy("submitTime","desc").onSnapshot((snapshot)=>{
+             // ลบหมุดเดิมทั้งหมดก่อน
+             markerList.forEach(m=>mapAdmin.removeLayer(m));
+             markerList = [];
+             document.getElementById("caseList").innerHTML = "";
+             snapshot.forEach((doc)=>{
+                 const data = doc.data();
+                 const docId = doc.id;
+                 let statusClass = "status‑waiting";
+                 if(data.status === "กำลังดำเนินการ") statusClass = "status‑processing";
+                 if(data.status === "เสร็จสิ้น") statusClass = "status‑done";
+                 // ปักหมุดเคสบนแผนที่
+                 if(data.gpsLatLng){
+                     const latLngArr = data.gpsLatLng.split(",");
+                     const lat = parseFloat(latLngArr[0]);
+                     const lng = parseFloat(latLngArr[1]);
+                     if(!isNaN(lat) && !isNaN(lng)){
+                         const marker = L.marker([lat,lng]).addTo(mapAdmin).bindPopup(`เคส: ${data.complaintType ?? "-"}`);
+                         markerList.push(marker);
+                     }
+                 }
+                 const cardHtml = `
+                     <div class="case‑card ${statusClass}">
+                         <p><strong>ชื่อผู้แจ้ง:</strong> ${data.reporterName ?? "-"}</p>
+                         <p><strong>เบอร์ติดต่อ:</strong> ${data.reporterPhone ?? "-"}</p>
+                         <p><strong>หมู่บ้าน:</strong> ${data.village ?? "-"}</p>
+                         <p><strong>ประเภทเคส:</strong> ${data.complaintType ?? "-"}</p>
+                         <p><strong>รายละเอียด:</strong> ${data.complaintDetail ?? "-"}</p>
+                         <p><strong>พิกัด:</strong> ${data.gpsLatLng ?? "-"}</p>
+                         <p><strong>สถานะปัจจุบัน:</strong> ${data.status ?? "รอรับเรื่อง"}</p>
+                         <p><strong>เวลาส่ง:</strong> ${data.submitTime ? new Date(data.submitTime.toDate()).toLocaleString("th‑TH") : "-"}</p>
+                         <button class="btn‑waiting" onclick="changeStatus('${docId}','รอรับเรื่อง')">รอรับเรื่อง</button>
+                         <button class="btn‑processing" onclick="changeStatus('${docId}','กำลังดำเนินการ')">กำลังดำเนินการ</button>
+                         <button class="btn‑done" onclick="changeStatus('${docId}','เสร็จสิ้น')">เสร็จสิ้น</button>
+                     </div>
+                 `;
+                 document.getElementById("caseList").innerHTML += cardHtml;
+             })
+         })
+     }
+     async function changeStatus(docId,newStatus){
+         try{
+             await db.collection("complaint_list").doc(docId).update({status:newStatus});
+             alert(`✅ เปลี่ยนสถานะเป็น ${newStatus} สำเร็จครับ`);
+         }catch(err){
+             alert(`❌ ผิดพลาดเปลี่ยนสถานะ: ${err.message}`);
+         }
+     }
+ </script>
+ </body>
+ </html>
